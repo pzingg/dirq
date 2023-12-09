@@ -15,13 +15,16 @@ defmodule Dirq.Queue.Iterator do
           last_seen: {String.t(), String.t()}
         }
 
+  @type value() :: [elem :: binary()]
+  @type next() :: {value() | :halt, t()}
+
   @doc false
   def new(%Queue{} = queue) do
     %__MODULE__{queue: queue}
   end
 
   @doc false
-  @spec next_elem(t()) :: {[elem :: binary()] | :halt, t()}
+  @spec next_elem(t()) :: next()
   def next_elem(%Iterator{queue: %Queue{path: qpath}, last_seen: {last_dir, last_file}} = iter) do
     dirs = Queue.get_intermediate_dirs(qpath, last_dir) |> Enum.sort()
 

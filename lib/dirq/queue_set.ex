@@ -13,6 +13,10 @@ defmodule Dirq.QueueSet do
           qset: [Queue.t()]
         }
 
+  @type iterator_state() :: [Iterator.next()]
+  @type iterator_value() :: [{Queue.t(), elem :: binary()}]
+  @type iterator_next() :: {iterator_value(), iterator_state()} | {:halt, []}
+
   @doc """
   Creates a queue set on the given queues.
 
@@ -79,11 +83,10 @@ defmodule Dirq.QueueSet do
     )
   end
 
+  @spec next_elem_in_set(iterator_state()) :: iterator_next()
   defp next_elem_in_set([]), do: {:halt, :ok}
 
   defp next_elem_in_set(nexts) do
-    # Iterator.next_elem/1 returns a tuple:
-    # {[elem :: binary()] | :halt, Iterator.t()}
     nexts =
       Enum.reject(nexts, fn
         {:halt, _} -> true
@@ -91,7 +94,7 @@ defmodule Dirq.QueueSet do
       end)
 
     if Enum.empty?(nexts) do
-      {:halt, :ok}
+      {:halt, []}
     else
       {elems, low_iter} = Enum.min_by(nexts, fn {[elem], _iter} -> elem end)
 
@@ -132,7 +135,7 @@ defmodule Dirq.QueueSet do
         end
 
       _, _acc ->
-        raise ArgumentError, "Expected Queue objects expected"
+        raise ArgumentError, "Expected Queue objects"
     end)
   end
 end
