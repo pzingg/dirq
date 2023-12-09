@@ -14,15 +14,13 @@ defmodule Dirq.QueueSet do
         }
 
   @doc """
-  Generate queue set on the given lists of queues. Copies of the
-  object instances are used.
+  Creates a queue set on the given queues.
 
-  Arguments:
-      *queues - QueueSet([q1,..]/(q1,..)) or QueueSet(q1,..)
+  Argument:
+    * `queues` - a single `Dirq.Queue` or list of `Dirq.Queue`s.
 
-  Raise:
-      QueueError - queues should be list/tuple or Queue object
-      ArgumentError  - one of objects provided is not instance of Queue
+  Raises:
+    *  `ArgumentError` - one of objects provided is not a `Dirq.Queue`
   """
   @spec new(Queue.t() | [Queue.t()]) :: t()
   def new(queues) do
@@ -30,7 +28,7 @@ defmodule Dirq.QueueSet do
   end
 
   @doc """
-  Return the number of elements in the queue set, regardless of
+  Returns the number of elements in the queue set, regardless of
   their state.
   """
   @spec count(t()) :: integer()
@@ -39,14 +37,14 @@ defmodule Dirq.QueueSet do
   end
 
   @doc """
-  Add lists of queues to existing ones.
+  Adds queues or lists of queues to an existing queue set.
 
-  Arguments:
-      *queues - add([q1,..]/(q1,..)) or add(q1,..)
+  Argument:
+    * `queues` - a single `Dirq.Queue` or list of `Dirq.Queue`s.
 
-  Raise:
-      QueueError - queue already in the set
-      ArgumentError - wrong queue object type provided
+  Raises:
+    * `Dirq.QueueError` - queue already in the set
+    * `ArgumentError` - wrong queue object type provided
   """
   @spec add(t(), Queue.t() | [Queue.t()]) :: t()
   def add(%QueueSet{} = queue_set, queues) do
@@ -54,13 +52,10 @@ defmodule Dirq.QueueSet do
   end
 
   @doc """
-  Remove a queue and its respective elements.
+  Removes a queue and its respective elements.
 
-  Arguments:
-      queue - queue to be removed
-
-  Raise:
-      ArgumentError - wrong queue object type provided
+  Argument:
+    * `queue` - queue to be removed
   """
   @spec remove(t(), Queue.t()) :: t()
   def remove(%QueueSet{qset: s} = queue_set, %Queue{id: given_id, path: _path}) do
@@ -72,7 +67,7 @@ defmodule Dirq.QueueSet do
   end
 
   @doc """
-  Creates a Stream that can be used to enumerate all the queue elements in
+  Creates a `Stream` that can be used to enumerate all the queue elements in
   the queue set.
   """
   @spec iterate(t()) :: Enumerable.t()
@@ -101,21 +96,25 @@ defmodule Dirq.QueueSet do
           Enum.min(elems)
         end)
 
-      elem = Enum.min(elems)
-      queue = low_iter.queue
-      low_id = queue.id
-
-      nexts =
-        Enum.map(nexts, fn {_elems, %Iterator{queue: %Queue{id: id}}} = next ->
-          if id == low_id do
-            Iterator.next_elem(low_iter)
-          else
-            next
-          end
-        end)
-
-      {[{queue, elem}], nexts}
+      advance(nexts, elems, low_iter)
     end
+  end
+
+  defp advance(nexts, elems, low_iter) do
+    elem = Enum.min(elems)
+    queue = low_iter.queue
+    low_id = queue.id
+
+    nexts =
+      Enum.map(nexts, fn {_elems, %Iterator{queue: %Queue{id: id}}} = next ->
+        if id == low_id do
+          Iterator.next_elem(low_iter)
+        else
+          next
+        end
+      end)
+
+    {[{queue, elem}], nexts}
   end
 
   defp do_add(%QueueSet{} = queue_set, %Queue{} = queue) do

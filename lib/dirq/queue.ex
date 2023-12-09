@@ -23,10 +23,10 @@ defmodule Dirq.Queue do
   It is very hard to guarantee pure FIFO behavior with multiple writers
   using the same queue. Consider for instance:
 
-  1. Writer1: calls the `add/3` function
-  2. Writer2: calls the `add/3` function
-  3. Writer2: the `add/3` function returns
-  4. Writer1: the `add/3` function returns
+  1. Writer1: calls the `Dirq.Queue.add/3` function
+  2. Writer2: calls the `Dirq.Queue.add/3` function
+  3. Writer2: the `Dirq.Queue.add/3` function returns
+  4. Writer1: the `Dirq.Queue.add/3` function returns
 
   Who should be first in the queue, Writer1 or Writer2?
 
@@ -39,7 +39,7 @@ defmodule Dirq.Queue do
   ## Data modes
 
   The data mode defines how user supplied data is stored in the queue. It is
-  only required by the `add/3` and `get/3` functions.
+  only required by the `Dirq.Queue.add/3` and `Dirq.Queue.get/3` functions.
 
   The data modes are:
     * `:binary` - the data is a sequence of binary bytes, it will be stored directly
@@ -53,15 +53,15 @@ defmodule Dirq.Queue do
 
   ## Locking
 
-  Adding an element is not a problem because the `add/3` function is atomic.
+  Adding an element is not a problem because the `Dirq.Queue.add/3` function is atomic.
 
   In order to support multiple processes interacting with the same queue,
   advisory locking is used. Processes should first lock an element before
-  working with it. In fact, the `get/2` and `remove/2` functions raise an
-  exception if they are called on unlocked elements.
+  working with it. In fact, the `Dirq.Queue.get/2` and `Dirq.Queue.remove/2`
+  functions raise an exception if they are called on unlocked elements.
 
   If the process that created the lock dies without unlocking the element,
-  we end up with a stale lock. The `purge/2` function can be used to
+  we end up with a stale lock. The `Dirq.Queue.purge/2` function can be used to
   remove these stale locks.
 
   An element can basically be in only one of two states: locked or
@@ -70,8 +70,8 @@ defmodule Dirq.Queue do
   A newly created element is unlocked as a writer usually does not need
   to do anything more with the element once dropped in the queue.
 
-  The `Stream` iterator, created by the `iterate/1` function, returns
-  all the elements, regardless of their states.
+  A `Stream` iterator, created by the `Dirq.Queue.iterate/1` function,
+  returns all the elements, regardless of their states.
 
   There is no function to get an element state as this information is
   usually useless since it may change at any time. Instead, programs should
@@ -84,7 +84,7 @@ defmodule Dirq.Queue do
 
   The names of the intermediate directories are time based: the element
   insertion time is used to create a 8-digit-long hexadecimal number.
-  The granularity (see `new/2`) is used to limit the number of
+  The granularity (see `Dirq.Queue.new/2`) is used to limit the number of
   new directories. For instance, with a granularity of 60 (the default),
   new directories will be created at most once per minute.
 
@@ -116,8 +116,8 @@ defmodule Dirq.Queue do
   security features (owner, group, permissions, ACLs...) should be used
   to adequately protect the data.
 
-  By default, the process' umask is respected. See the documentation
-  for `new/2` if you want an other behavior.
+  By default, the process's umask is respected. See the documentation
+  for `Dirq.Queue.new/2` if you want an other behavior.
 
   If multiple readers and writers with different uids are expected, the
   easiest solution is to have all the files and directories inside the
@@ -215,8 +215,8 @@ defmodule Dirq.Queue do
   Adds data to the queue as a file.
 
   Arguments:
-    * `data` - binary data to write
-    * `format` - `:json`, `:json_atoms`, `:utf8`, or `:binary`
+    * `data` - data to write
+    * `format` - `:json`, `:json_atoms`, `:utf8`, or `:binary` (default: `:utf8`)
 
   Returns the element name (<directory name>/<file name>).
   """
@@ -230,8 +230,8 @@ defmodule Dirq.Queue do
   Creates a new element in the queue and writes `data` to it.
 
   Arguments:
-    * `data` - binary data to write
-    * `format` - `:utf8`, `:json`, or `:binary`
+    * `data` - data to write
+    * `format` - `:json`, `:json_atoms`, `:utf8`, or `:binary` (default: `:utf8`)
 
   Returns a 2-tuple of the directory name where the file was written,
   and the full path to the temporary file.
@@ -261,6 +261,8 @@ defmodule Dirq.Queue do
   Adds the given file (identified by its path) to the queue and return
   the corresponding element name, the file must be on the same
   filesystem and will be moved to the queue.
+
+  Returns element name (<directory name>/<file name>).
   """
   @spec add_path(t(), binary()) :: binary()
   def add_path(%Queue{path: qpath, umask: umask} = queue, path) do
@@ -305,20 +307,10 @@ defmodule Dirq.Queue do
   @spec count(t()) :: integer()
   def count(%Queue{path: qpath}) do
     # get list of intermediate directories
-    get_list_of_interm_dirs(qpath)
+    get_intermediate_dirs(qpath)
     |> Enum.reduce(0, fn name, acc ->
       # count elements in sub-directories
-      path = Path.join(qpath, name)
-
-      files =
-        case File.ls(path) do
-          {:ok, files} ->
-            Enum.filter(files, &Regex.match?(@element_regexp, &1))
-
-          _ ->
-            []
-        end
-
+      files = Path.join(qpath, name) |> get_element_files()
       acc + Enum.count(files)
     end)
   end
@@ -336,7 +328,7 @@ defmodule Dirq.Queue do
 
   Arguments:
     * `name` - name of an element
-    * `format` - `:json`, `:json_atoms`, `:utf8`, or `:binary`
+    * `format` - `:json`, `:json_atoms`, `:utf8`, or `:binary` (default: `:utf8`)
 
   Raises:
     * `File.Error` - problems opening, closing, or reading file
@@ -349,18 +341,18 @@ defmodule Dirq.Queue do
 
   @doc """
   Locks, then returns the content of an element from the queue.
-  Element will not be removed. Operations performed: lock(queue, name),
-  get(queue, name), unlock(queue, name)
+  Element will not be removed. Operations performed:
+  `Dirq.Queue.lock/3`, `Dirq.Queue.get/3`, `Dirq.Queue.unlock/3`.
 
   Arguments:
     * `name` - name of an element
-    * `permissive` - work in permissive mode
+    * `permissive` - work in permissive mode (default: `true`)
 
   Raises:
-    * `QueueLockError` - couldn't lock element
+    * `Dirq.QueueLockError` - couldn't lock element
   """
   @spec get_element(t(), binary(), boolean()) :: any()
-  def get_element(%Queue{} = queue, name, permissive \\ false) do
+  def get_element(%Queue{} = queue, name, permissive \\ true) do
     if !lock(queue, name, permissive) do
       raise QueueLockError, "Couldn't lock element #{name}"
     end
@@ -372,25 +364,26 @@ defmodule Dirq.Queue do
 
   @doc """
   Dequeues an element from the queue. Performs operations:
-  `lock(queue, name)`, `get(queue, name)`, `remove(queue, name)`
+  `Dirq.Queue.lock/3`, `Dirq.Queue.get/3`, `Dirq.Queue.remove/2`.
 
   Arguments:
     * `name` - name of an element
-    * `permissive` - work in permissive mode
+    * `format` - `:json`, `:json_atoms`, `:utf8`, or `:binary` (default: `:utf8`)
+    * `permissive` - work in permissive mode (default: `true`)
 
   Returns the content of the element.
 
   Raises:
-    * `QueueLockError` - couldn't lock element
+    * `Dirq.QueueLockError` - couldn't lock element
     * `File.Error` - problems opening/closing directory/file
   """
-  @spec dequeue(t(), binary(), boolean()) :: any()
-  def(dequeue(%Queue{} = queue, name, permissive \\ true)) do
+  @spec dequeue(t(), binary(), data_mode(), boolean()) :: any()
+  def dequeue(%Queue{} = queue, name, format \\ :utf8, permissive \\ true) do
     if !lock(queue, name, permissive) do
       raise QueueLockError, "Couldn't lock element #{name}"
     end
 
-    data = get(queue, name)
+    data = get(queue, name, format)
     _ = remove(queue, name)
     data
   end
@@ -400,14 +393,15 @@ defmodule Dirq.Queue do
 
   Arguments:
     * `name` - name of an element
-    * `permissive` - work in permissive mode
+    * `permissive` - work in permissive mode (default: `true`)
 
   Returns:
     * `true` on success
     * `false` in case the element could not be locked (in permissive mode)
 
   Raises:
-    * `File.Error` or `File.LinkError`
+    * `File.Error`
+    * `File.LinkError`
   """
   @spec lock(t(), binary(), boolean()) :: boolean()
   def lock(%Queue{path: qpath}, name, permissive \\ true) do
@@ -463,7 +457,7 @@ defmodule Dirq.Queue do
 
   Arguments:
     * `name` - name of an element
-    * `permissive` - work in permissive mode
+    * `permissive` - work in permissive mode (default: `false`)
 
   Returns:
     * `true` on success
@@ -495,6 +489,8 @@ defmodule Dirq.Queue do
 
   @doc """
   Removes a locked element from the queue.
+
+  Always returns `:ok`, even if the element does not exist.
   """
   @spec remove(t(), binary()) :: :ok
   def remove(%Queue{path: qpath}, name) do
@@ -523,17 +519,20 @@ defmodule Dirq.Queue do
   queues with many elements.
 
   Options:
-    * `maxtemp` - maximum time for a temporary element
-            (in seconds, default 300);
-            if set to 0, temporary elements will not be removed
-    * `maxlock` - maximum time for a locked element
-            (in seconds, default 600);
-            if set to 0, locked elements will not be unlocked
+    * `maxtemp` - maximum time for a temporary element (in seconds, default: 300);
+      if set to 0, temporary elements will not be removed
+    * `maxlock` - maximum time for a locked element (in seconds, default: 600);
+      if set to 0, locked elements will not be unlocked
+
+  Always returns `:ok`, even if nothing was purged.
+
+  Raises:
+    * `File.Error` - if a file to be purged exists, but cannot be removed
   """
   @spec purge(t(), purge_opts()) :: :ok
   def purge(%Queue{path: qpath}, opts \\ []) do
     # get list of intermediate directories
-    dirs = get_list_of_interm_dirs(qpath)
+    dirs = get_intermediate_dirs(qpath)
 
     now = System.os_time(:second)
     maxtemp = Keyword.get(opts, :maxtemp, 300)
@@ -644,13 +643,13 @@ defmodule Dirq.Queue do
   end
 
   @doc """
-  Touch an element directory to indicate that it is still being used.
+  Touches an element directory to indicate that it is still being used.
 
   Note: This is only really useful for locked elements but we allow it
-    for all.
+  for all.
 
   Raises:
-    File.Error
+    * `File.Error`
   """
   @spec touch(t(), binary()) :: :ok
   def touch(%Queue{path: qpath}, name) do
@@ -659,9 +658,9 @@ defmodule Dirq.Queue do
   end
 
   @doc false
-  def get_list_of_interm_dirs(qpath, from \\ nil)
+  def get_intermediate_dirs(qpath, from \\ nil)
 
-  def get_list_of_interm_dirs(qpath, nil) do
+  def get_intermediate_dirs(qpath, nil) do
     # Get names of intermediate directories.
     case File.ls(qpath) do
       {:ok, files} ->
@@ -672,7 +671,7 @@ defmodule Dirq.Queue do
     end
   end
 
-  def get_list_of_interm_dirs(qpath, from) do
+  def get_intermediate_dirs(qpath, from) do
     case File.ls(qpath) do
       {:ok, files} ->
         Enum.filter(files, fn file ->
@@ -681,6 +680,39 @@ defmodule Dirq.Queue do
 
       _ ->
         []
+    end
+  end
+
+  @doc false
+  def get_element_files(dir) do
+    case File.ls(dir) do
+      {:ok, files} ->
+        Enum.filter(files, &Regex.match?(@element_regexp, &1))
+
+      _ ->
+        []
+    end
+  end
+
+  @doc false
+  def get_next_element_file(dir) do
+    get_element_files(dir)
+    |> Enum.sort()
+    |> List.first()
+  end
+
+  @doc false
+  def get_next_element_file(dir, last_file) do
+    case File.ls(dir) do
+      {:ok, files} ->
+        Enum.filter(files, fn file ->
+          Regex.match?(@element_regexp, file) && file > last_file
+        end)
+        |> Enum.sort()
+        |> List.first()
+
+      _ ->
+        nil
     end
   end
 
@@ -738,7 +770,7 @@ defmodule Dirq.Queue do
     #
     # Raises:
     #   * `File.Error` - problems opening, closing, or reading file
-    #   * `Jason.Error`
+    #   * `Jason.DecodeError`
     modes =
       case format do
         :binary -> [:read]
@@ -750,7 +782,7 @@ defmodule Dirq.Queue do
         raise File.Error, reason: reason, action: "open", path: IO.chardata_to_string(path)
 
       {:ok, h} ->
-        data = read_and_decode(h, format, modes)
+        data = read_and_decode(h, path, format, modes)
 
         case File.close(h) do
           {:error, reason} ->
@@ -762,7 +794,7 @@ defmodule Dirq.Queue do
     end
   end
 
-  def read_and_decode(h, format, modes) do
+  defp read_and_decode(h, path, format, modes) do
     data =
       if :utf8 in modes do
         IO.read(h, :eof)
@@ -798,8 +830,8 @@ defmodule Dirq.Queue do
     # Returns {:ok, _pid} or {:error, action, reason}
     #
     # Raises:
-    #   * `File.Error` if file cannot be opened or if
-    #     subdirectories cannot be created.
+    #   * `File.Error` if file cannot be opened or if subdirectories cannot be created
+    #   * `Jason.EncodeError`
     res =
       case file_create(path, umask, format) do
         {:error, :enoent} ->
@@ -859,9 +891,9 @@ defmodule Dirq.Queue do
 
   defp special_mkdir(path, umask) do
     # Recursively create directories specified in path.
-    #   * returns true on success
-    #   * returns false if the directory already exists
-    #   * raises `File.Error` in case of any other error
+    # Returns `true` on success
+    # Returns `false` if the directory already exists
+    # Raises `File.Error` in case of any other error
     {result, reason} =
       if is_nil(umask) do
         wrapped_mkdir_p(path)
@@ -883,7 +915,7 @@ defmodule Dirq.Queue do
   end
 
   defp wrapped_mkdir_p(path) do
-    # Wrapped `File.mkdir_p/1` used by `special_mkdir/1`
+    # Wrapped `File.mkdir_p/1` used by `Dirq.Queue.special_mkdir/1`
     case File.mkdir_p(path) do
       :ok ->
         {true, nil}
@@ -901,9 +933,9 @@ defmodule Dirq.Queue do
 
   defp special_rmdir(path) do
     # Delete a directory:
-    # * returns true on success
-    # * returns false if the path does not exist (anymore)
-    # * raises `File.Error` in case of any other error
+    # Returns `true` on success
+    # Returns `false` if the path no longer exists
+    # Raises `File.Error` in case of any other error
     case File.rmdir(path) do
       :ok ->
         true

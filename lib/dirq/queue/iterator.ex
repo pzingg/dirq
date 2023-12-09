@@ -15,8 +15,6 @@ defmodule Dirq.Queue.Iterator do
           last_seen: {String.t(), String.t()}
         }
 
-  @element_regexp ~r/^[0-9a-f]{14}$/
-
   @doc false
   def new(%Queue{} = queue) do
     %__MODULE__{queue: queue}
@@ -24,54 +22,32 @@ defmodule Dirq.Queue.Iterator do
 
   @doc false
   def next_elem(%Iterator{queue: %Queue{path: qpath}, last_seen: {last_dir, last_file}} = iter) do
-    case Queue.get_list_of_interm_dirs(qpath, last_dir) |> Enum.sort() do
+    dirs = Queue.get_intermediate_dirs(qpath, last_dir) |> Enum.sort()
+
+    case dirs do
       [] ->
         {:halt, iter}
 
       [next_dir | rest] ->
-        path = Path.join(qpath, next_dir)
+        next_file = Path.join(qpath, next_dir) |> Queue.get_next_element_file(last_file)
 
-        files =
-          case File.ls(path) do
-            {:ok, files} ->
-              Enum.filter(files, fn file ->
-                Regex.match?(@element_regexp, file) && file > last_file
-              end)
-              |> Enum.sort()
-
-            _ ->
-              []
-          end
-
-        case {files, rest} do
-          {[next_file | _], _} ->
-            {[Path.join(next_dir, next_file)], %Iterator{iter | last_seen: {next_dir, next_file}}}
-
-          {[], []} ->
-            {:halt, iter}
-
-          {[], [next_dir | _]} ->
-            path = Path.join(qpath, next_dir)
-
-            files =
-              case File.ls(path) do
-                {:ok, files} ->
-                  Enum.filter(files, &Regex.match?(@element_regexp, &1))
-                  |> Enum.sort()
-
-                _ ->
-                  []
-              end
-
-            case files do
-              [next_file | _] ->
-                {[Path.join(next_dir, next_file)],
-                 %Iterator{iter | last_seen: {next_dir, next_file}}}
-
-              [] ->
-                {:halt, iter}
-            end
+        if is_nil(next_file) do
+          try_next_dir(iter, rest)
+        else
+          {[Path.join(next_dir, next_file)], %Iterator{iter | last_seen: {next_dir, next_file}}}
         end
+    end
+  end
+
+  defp try_next_dir(iter, []), do: {:halt, iter}
+
+  defp try_next_dir(%Iterator{queue: %Queue{path: qpath}} = iter, [next_dir | _]) do
+    next_file = Path.join(qpath, next_dir) |> Queue.get_next_element_file()
+
+    if is_nil(next_file) do
+      {:halt, iter}
+    else
+      {[Path.join(next_dir, next_file)], %Iterator{iter | last_seen: {next_dir, next_file}}}
     end
   end
 end

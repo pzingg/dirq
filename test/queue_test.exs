@@ -119,7 +119,9 @@ defmodule QueueTest do
     # add "normal" element
     _elem = Queue.add(queue, "foo")
     # simply add a file (fake element) into the elements directory
-    fake_elem = File.ls!(qdir) |> hd() |> Path.join("foo.bar")
+    dir = File.ls!(qdir) |> List.first()
+    assert dir
+    fake_elem = Path.join(dir, "foo.bar")
     fake_path = Path.join(qdir, fake_elem)
     File.write(fake_path, "")
     assert Queue.count(queue) == 1

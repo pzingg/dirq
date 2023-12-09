@@ -1,7 +1,5 @@
 defmodule Dirq do
-  @moduledoc """
-  Documentation for `Dirq`.
-  """
+  @moduledoc false
 
   defmodule QueueError do
     defexception [:message]
@@ -19,18 +17,5 @@ defmodule Dirq do
     def exception(msg) do
       %__MODULE__{message: msg}
     end
-  end
-
-  @doc """
-  Hello world.
-
-  ## Examples
-
-      iex> Dirq.hello()
-      :world
-
-  """
-  def hello do
-    :world
   end
 end
