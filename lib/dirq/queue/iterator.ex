@@ -21,6 +21,7 @@ defmodule Dirq.Queue.Iterator do
   end
 
   @doc false
+  @spec next_elem(t()) :: {[elem :: binary()] | :halt, t()}
   def next_elem(%Iterator{queue: %Queue{path: qpath}, last_seen: {last_dir, last_file}} = iter) do
     dirs = Queue.get_intermediate_dirs(qpath, last_dir) |> Enum.sort()
 

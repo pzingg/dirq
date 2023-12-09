@@ -82,6 +82,8 @@ defmodule Dirq.QueueSet do
   defp next_elem_in_set([]), do: {:halt, :ok}
 
   defp next_elem_in_set(nexts) do
+    # Iterator.next_elem/1 returns a tuple:
+    # {[elem :: binary()] | :halt, Iterator.t()}
     nexts =
       Enum.reject(nexts, fn
         {:halt, _} -> true
@@ -91,20 +93,13 @@ defmodule Dirq.QueueSet do
     if Enum.empty?(nexts) do
       {:halt, :ok}
     else
-      {elems, low_iter} =
-        Enum.min_by(nexts, fn {elems, _iter} ->
-          Enum.min(elems)
-        end)
+      {elems, low_iter} = Enum.min_by(nexts, fn {[elem], _iter} -> elem end)
 
       advance(nexts, elems, low_iter)
     end
   end
 
-  defp advance(nexts, elems, low_iter) do
-    elem = Enum.min(elems)
-    queue = low_iter.queue
-    low_id = queue.id
-
+  defp advance(nexts, [elem], %Iterator{queue: %Queue{id: low_id} = queue} = low_iter) do
     nexts =
       Enum.map(nexts, fn {_elems, %Iterator{queue: %Queue{id: id}}} = next ->
         if id == low_id do
