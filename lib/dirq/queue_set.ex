@@ -24,7 +24,8 @@ defmodule Dirq.QueueSet do
     * `queues` - a single `Dirq.Queue` or list of `Dirq.Queue`s.
 
   Raises:
-    *  `ArgumentError` - one of objects provided is not a `Dirq.Queue`
+    * `Dirq.QueueError` - duplicate queue found in `queues`
+    * `ArgumentError` - one of objects provided is not a `Dirq.Queue`
   """
   @spec new(Queue.t() | [Queue.t()]) :: t()
   def new(queues) do
@@ -77,7 +78,8 @@ defmodule Dirq.QueueSet do
   @spec iterate(t()) :: Enumerable.t()
   def iterate(%QueueSet{qset: s}) do
     Stream.resource(
-      fn -> Enum.map(s, fn q -> Iterator.new(q) |> Iterator.next_elem() end) end,
+      # Delay call to `Iterator.next_elem/1` until Stream is enumerated
+      fn -> Enum.map(s, fn q -> {["00000000/00000000000000"], Iterator.new(q)} end) end,
       &next_elem_in_set/1,
       fn _ -> :ok end
     )
@@ -86,7 +88,15 @@ defmodule Dirq.QueueSet do
   @spec next_elem_in_set(iterator_state()) :: iterator_next()
   defp next_elem_in_set([]), do: {:halt, :ok}
 
-  defp next_elem_in_set(nexts) do
+  defp next_elem_in_set([{_elems, first_iter} | _] = nexts) do
+    # Check if this is the first call for Stream to be enumerated
+    nexts =
+      if Iterator.new?(first_iter) do
+        Enum.map(nexts, fn {_elems, iter} -> Iterator.next_elem(iter) end)
+      else
+        nexts
+      end
+
     nexts =
       Enum.reject(nexts, fn
         {:halt, _} -> true

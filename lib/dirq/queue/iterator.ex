@@ -4,8 +4,10 @@ defmodule Dirq.Queue.Iterator do
   during an iteration.
   """
 
+  @never_seen {"00000000", "00000000000000"}
+
   defstruct queue: nil,
-            last_seen: {"00000000", "00000000000000"}
+            last_seen: @never_seen
 
   alias Dirq.Queue
   alias __MODULE__
@@ -19,9 +21,14 @@ defmodule Dirq.Queue.Iterator do
   @type next() :: {value() | :halt, t()}
 
   @doc false
+  @spec new(Queue.t()) :: t()
   def new(%Queue{} = queue) do
     %__MODULE__{queue: queue}
   end
+
+  @doc false
+  @spec new?(t()) :: boolean()
+  def new?(%Iterator{last_seen: last_seen}), do: last_seen == @never_seen
 
   @doc false
   @spec next_elem(t()) :: next()
